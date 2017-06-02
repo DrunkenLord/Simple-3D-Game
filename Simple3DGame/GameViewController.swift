@@ -10,96 +10,120 @@ import UIKit
 import QuartzCore
 import SceneKit
 
-class GameViewController: UIViewController {
+class GameViewController: UIViewController, SCNSceneRendererDelegate {
+    
+    var gameView:SCNView!
+    var gameScene:SCNScene!
+    var cameraNode:SCNNode!
+    var targetCreationTime:TimeInterval = 0
 
     override func viewDidLoad() {
+
         super.viewDidLoad()
+        intiView()
+        initScene()
+        initCamera()
         
-        // create a new scene
-        let scene = SCNScene(named: "art.scnassets/ship.scn")!
-        
-        // create and add a camera to the scene
-        let cameraNode = SCNNode()
-        cameraNode.camera = SCNCamera()
-        scene.rootNode.addChildNode(cameraNode)
-        
-        // place the camera
-        cameraNode.position = SCNVector3(x: 0, y: 0, z: 15)
-        
-        // create and add a light to the scene
-        let lightNode = SCNNode()
-        lightNode.light = SCNLight()
-        lightNode.light!.type = .omni
-        lightNode.position = SCNVector3(x: 0, y: 10, z: 10)
-        scene.rootNode.addChildNode(lightNode)
-        
-        // create and add an ambient light to the scene
-        let ambientLightNode = SCNNode()
-        ambientLightNode.light = SCNLight()
-        ambientLightNode.light!.type = .ambient
-        ambientLightNode.light!.color = UIColor.darkGray
-        scene.rootNode.addChildNode(ambientLightNode)
-        
-        // retrieve the ship node
-        let ship = scene.rootNode.childNode(withName: "ship", recursively: true)!
-        
-        // animate the 3d object
-        ship.runAction(SCNAction.repeatForever(SCNAction.rotateBy(x: 0, y: 2, z: 0, duration: 1)))
-        
-        // retrieve the SCNView
-        let scnView = self.view as! SCNView
-        
-        // set the scene to the view
-        scnView.scene = scene
-        
-        // allows the user to manipulate the camera
-        scnView.allowsCameraControl = true
-        
-        // show statistics such as fps and timing information
-        scnView.showsStatistics = true
-        
-        // configure the view
-        scnView.backgroundColor = UIColor.black
-        
-        // add a tap gesture recognizer
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
-        scnView.addGestureRecognizer(tapGesture)
     }
     
-    func handleTap(_ gestureRecognize: UIGestureRecognizer) {
-        // retrieve the SCNView
-        let scnView = self.view as! SCNView
+    
+    func intiView(){
+        gameView = self.view as! SCNView
+        gameView.allowsCameraControl = true
+        gameView.autoenablesDefaultLighting = true
+        gameView.delegate = self
+    }
+    
+    func initScene(){
+        gameScene = SCNScene()
+        gameView.scene = gameScene
         
-        // check what nodes are tapped
-        let p = gestureRecognize.location(in: scnView)
-        let hitResults = scnView.hitTest(p, options: [:])
-        // check that we clicked on at least one object
-        if hitResults.count > 0 {
-            // retrieved the first clicked object
-            let result: AnyObject = hitResults[0]
+        
+        gameView.isPlaying = true
+        
+    }
+    
+    
+    func initCamera()
+    {
+        cameraNode = SCNNode()
+        cameraNode.camera = SCNCamera()
+        
+        cameraNode.position = SCNVector3(x: 0, y: 5, z: 10)
+        gameScene.rootNode.addChildNode(cameraNode)
+    }
+    
+    func createTarget()
+    {
+        let geometry: SCNGeometry = SCNPyramid(width: 1.0, height: 1.0, length: 1.0)
+        
+        let randomColor = arc4random_uniform(2) == 0 ? UIColor.green : UIColor.red
+        
+        geometry.materials.first?.diffuse.contents = randomColor
+        
+        let geometryNode = SCNNode(geometry: geometry)
+        
+        geometryNode.physicsBody = SCNPhysicsBody(type: .dynamic, shape: nil)
+        
+        if randomColor == UIColor.red
+        {
+            geometryNode.name = "Enemy"
+        }
+        else{
+            geometryNode.name = "Friend"
+        }
+        
+        gameScene.rootNode.addChildNode(geometryNode)
+        
+        
+        let randomDirection = arc4random_uniform(2) == 0 ? -1.0 : 1.0
+        
+        let force = SCNVector3(x: Float(randomDirection), y: 15, z: 0)
+        
+        geometryNode.physicsBody?.applyForce(force, at: SCNVector3(x: 0.05, y: 0.05, z: 0.05), asImpulse: true)
+        
+        
+        
+    }
+    
+    func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+        if time > targetCreationTime{
+        createTarget()
+        targetCreationTime = time + 0.6
+        }
+        
+        cleanUp()
+    }
+    
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        let touch = touches.first!
+        let location = touch.location(in: gameView)
+        let hitList = gameView.hitTest(location, options: nil)
+        if let hitObject = hitList.first{
+            let node = hitObject.node
             
-            // get its material
-            let material = result.node!.geometry!.firstMaterial!
-            
-            // highlight it
-            SCNTransaction.begin()
-            SCNTransaction.animationDuration = 0.5
-            
-            // on completion - unhighlight
-            SCNTransaction.completionBlock = {
-                SCNTransaction.begin()
-                SCNTransaction.animationDuration = 0.5
-                
-                material.emission.contents = UIColor.black
-                
-                SCNTransaction.commit()
+            if node.name == "Friend"
+            {
+                node.removeFromParentNode()
+                self.gameView.backgroundColor = UIColor.black
+            }else{
+                node.removeFromParentNode()
+                self.gameView.backgroundColor = UIColor.red
             }
             
-            material.emission.contents = UIColor.red
-            
-            SCNTransaction.commit()
         }
     }
+    
+    func cleanUp()
+    {
+        for node in gameScene.rootNode.childNodes {
+            if node.presentation.position.y < -2 {
+                node.removeFromParentNode()
+            }
+        }
+    }
+
+    
     
     override var shouldAutorotate: Bool {
         return true
@@ -123,3 +147,4 @@ class GameViewController: UIViewController {
     }
 
 }
+
